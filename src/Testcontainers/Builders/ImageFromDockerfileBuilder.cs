@@ -1,105 +1,121 @@
-namespace DotNet.Testcontainers.Builders
+﻿namespace DotNet.Testcontainers.Builders
 {
   using System;
   using System.Collections.Generic;
-  using System.Threading.Tasks;
-  using DotNet.Testcontainers.Clients;
+  using System.IO;
+  using Docker.DotNet.Models;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Images;
   using JetBrains.Annotations;
 
-  /// <inheritdoc cref="IImageFromDockerfileBuilder" />
+  /// <summary>
+  /// A fluent Docker image builder.
+  /// </summary>
+  /// <example>
+  ///   The default configuration is equivalent to:
+  ///   <code>
+  ///   _ = new ImageFromDockerfileBuilder()
+  ///     .WithDockerEndpoint(TestcontainersSettings.OS.DockerEndpointAuthConfig)
+  ///     .WithLabel(DefaultLabels.Instance)
+  ///     .WithCleanUp(true)
+  ///     .WithDockerfile("Dockerfile")
+  ///     .WithDockerfileDirectory(Directory.GetCurrentDirectory())
+  ///     .WithName(new DockerImage("localhost/testcontainers", Guid.NewGuid().ToString("D"), string.Empty))
+  ///     .Build();
+  ///   </code>
+  /// </example>
   [PublicAPI]
-  public class ImageFromDockerfileBuilder : AbstractBuilder<IImageFromDockerfileBuilder, IImageFromDockerfileConfiguration>, IImageFromDockerfileBuilder
+  public class ImageFromDockerfileBuilder : AbstractBuilder<ImageFromDockerfileBuilder, IFutureDockerImage, ImageBuildParameters, IImageFromDockerfileConfiguration>, IImageFromDockerfileBuilder<ImageFromDockerfileBuilder>
   {
     /// <summary>
     /// Initializes a new instance of the <see cref="ImageFromDockerfileBuilder" /> class.
     /// </summary>
     public ImageFromDockerfileBuilder()
-      : this(new ImageFromDockerfileConfiguration(
-        dockerEndpointAuthenticationConfiguration: TestcontainersSettings.OS.DockerEndpointAuthConfig,
-        image: new DockerImage($"testcontainers:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}"),
-        dockerfile: "Dockerfile",
-        dockerfileDirectory: ".",
-        labels: DefaultLabels.Instance,
-        buildArguments: new Dictionary<string, string>()))
+      : this(new ImageFromDockerfileConfiguration())
     {
+      this.DockerResourceConfiguration = this.Init().DockerResourceConfiguration;
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ImageFromDockerfileBuilder" /> class.
     /// </summary>
-    /// <param name="dockerResourceConfiguration">The Docker image configuration.</param>
+    /// <param name="dockerResourceConfiguration">The Docker resource configuration.</param>
     private ImageFromDockerfileBuilder(IImageFromDockerfileConfiguration dockerResourceConfiguration)
       : base(dockerResourceConfiguration)
     {
+      this.DockerResourceConfiguration = dockerResourceConfiguration;
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithName(string name)
+    protected override IImageFromDockerfileConfiguration DockerResourceConfiguration { get; }
+
+    /// <inheritdoc />
+    public ImageFromDockerfileBuilder WithName(string name)
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(image: new DockerImage(name)));
+      return this.WithName(new DockerImage(name));
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithName(IDockerImage name)
+    public ImageFromDockerfileBuilder WithName(IImage name)
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(image: name));
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(image: name));
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithDockerfile(string dockerfile)
+    public ImageFromDockerfileBuilder WithDockerfile(string dockerfile)
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(dockerfile: dockerfile));
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(dockerfile: dockerfile));
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithDockerfileDirectory(string dockerfileDirectory)
+    public ImageFromDockerfileBuilder WithDockerfileDirectory(string dockerfileDirectory)
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(dockerfileDirectory: dockerfileDirectory));
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(dockerfileDirectory: dockerfileDirectory));
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithDeleteIfExists(bool deleteIfExists)
+    public ImageFromDockerfileBuilder WithDockerfileDirectory(CommonDirectoryPath commonDirectoryPath, string dockerfileDirectory)
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(deleteIfExists: deleteIfExists));
+      var dockerfileDirectoryPath = Path.Combine(commonDirectoryPath.DirectoryPath, dockerfileDirectory);
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(dockerfileDirectory: dockerfileDirectoryPath));
     }
 
     /// <inheritdoc />
-    public IImageFromDockerfileBuilder WithBuildArgument(string name, string value)
+    public ImageFromDockerfileBuilder WithDeleteIfExists(bool deleteIfExists)
     {
-      var buildArgs = new Dictionary<string, string> { { name, value } };
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(buildArguments: buildArgs));
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(deleteIfExists: deleteIfExists));
     }
 
     /// <inheritdoc />
-    public Task<string> Build()
+    public ImageFromDockerfileBuilder WithBuildArgument(string name, string value)
     {
-      ITestcontainersClient client = new TestcontainersClient(this.DockerResourceConfiguration.DockerEndpointAuthConfig, TestcontainersSettings.Logger);
-      return client.BuildAsync(this.DockerResourceConfiguration);
+      var buildArguments = new Dictionary<string, string> { { name, value } };
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(buildArguments: buildArguments));
     }
 
     /// <inheritdoc />
-    protected override IImageFromDockerfileBuilder MergeNewConfiguration(IDockerResourceConfiguration dockerResourceConfiguration)
+    public override IFutureDockerImage Build()
     {
-      return this.MergeNewConfiguration(new ImageFromDockerfileConfiguration(dockerResourceConfiguration));
+      this.Validate();
+      return new FutureDockerImage(this.DockerResourceConfiguration, TestcontainersSettings.Logger);
     }
 
-    /// <summary>
-    /// Merges the current with the new Docker resource configuration.
-    /// </summary>
-    /// <param name="dockerResourceConfiguration">The new Docker resource configuration.</param>
-    /// <returns>A configured instance of <see cref="IImageFromDockerfileBuilder" />.</returns>
-    protected virtual IImageFromDockerfileBuilder MergeNewConfiguration(IImageFromDockerfileConfiguration dockerResourceConfiguration)
+    /// <inheritdoc />
+    protected sealed override ImageFromDockerfileBuilder Init()
     {
-      var dockerEndpointAuthConfig = BuildConfiguration.Combine(dockerResourceConfiguration.DockerEndpointAuthConfig, this.DockerResourceConfiguration.DockerEndpointAuthConfig);
-      var image = BuildConfiguration.Combine(dockerResourceConfiguration.Image, this.DockerResourceConfiguration.Image);
-      var dockerfile = BuildConfiguration.Combine(dockerResourceConfiguration.Dockerfile, this.DockerResourceConfiguration.Dockerfile);
-      var dockerfileDirectory = BuildConfiguration.Combine(dockerResourceConfiguration.DockerfileDirectory, this.DockerResourceConfiguration.DockerfileDirectory);
-      var deleteIfExists = dockerResourceConfiguration.DeleteIfExists && this.DockerResourceConfiguration.DeleteIfExists;
-      var labels = BuildConfiguration.Combine(dockerResourceConfiguration.Labels, this.DockerResourceConfiguration.Labels);
-      var buildArgs = BuildConfiguration.Combine(dockerResourceConfiguration.BuildArguments, this.DockerResourceConfiguration.BuildArguments);
-      return new ImageFromDockerfileBuilder(new ImageFromDockerfileConfiguration(dockerEndpointAuthConfig, image, dockerfile, dockerfileDirectory, deleteIfExists, labels, buildArgs));
+      return base.Init().WithDockerfile("Dockerfile").WithDockerfileDirectory(Directory.GetCurrentDirectory()).WithName(new DockerImage("localhost/testcontainers", Guid.NewGuid().ToString("D"), string.Empty));
+    }
+
+    /// <inheritdoc />
+    protected override ImageFromDockerfileBuilder Clone(IResourceConfiguration<ImageBuildParameters> resourceConfiguration)
+    {
+      return this.Merge(this.DockerResourceConfiguration, new ImageFromDockerfileConfiguration(resourceConfiguration));
+    }
+
+    /// <inheritdoc />
+    protected override ImageFromDockerfileBuilder Merge(IImageFromDockerfileConfiguration oldValue, IImageFromDockerfileConfiguration newValue)
+    {
+      return new ImageFromDockerfileBuilder(new ImageFromDockerfileConfiguration(oldValue, newValue));
     }
   }
 }

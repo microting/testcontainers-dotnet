@@ -1,6 +1,7 @@
-﻿namespace DotNet.Testcontainers.Builders
+namespace DotNet.Testcontainers.Builders
 {
   using System;
+  using System.Linq;
   using DotNet.Testcontainers.Configurations;
 
   /// <inheritdoc cref="IDockerRegistryAuthenticationProvider" />
@@ -8,11 +9,23 @@
   {
     private readonly Uri dockerEngine;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EnvironmentEndpointAuthenticationProvider" /> class.
+    /// </summary>
     public EnvironmentEndpointAuthenticationProvider()
+      : this(PropertiesFileConfiguration.Instance, EnvironmentConfiguration.Instance)
     {
-      ICustomConfiguration propertiesFileConfiguration = new PropertiesFileConfiguration();
-      ICustomConfiguration environmentConfiguration = new EnvironmentConfiguration();
-      this.dockerEngine = propertiesFileConfiguration.GetDockerHost() ?? environmentConfiguration.GetDockerHost();
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EnvironmentEndpointAuthenticationProvider" /> class.
+    /// </summary>
+    /// <param name="customConfigurations">A list of custom configurations.</param>
+    public EnvironmentEndpointAuthenticationProvider(params ICustomConfiguration[] customConfigurations)
+    {
+      this.dockerEngine = customConfigurations
+        .Select(customConfiguration => customConfiguration.GetDockerHost())
+        .FirstOrDefault(dockerHost => dockerHost != null);
     }
 
     /// <inheritdoc />

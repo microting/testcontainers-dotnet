@@ -2,9 +2,13 @@ name: CodeQL
 
 on:
   push:
-    branches: [ develop, master ]
+    branches: [ develop, main ]
   pull_request:
-    branches: [ develop, master ]
+    branches: [ develop, main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
@@ -16,11 +20,13 @@ jobs:
     permissions:
       security-events: write
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+        with:
+          lfs: true
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v2

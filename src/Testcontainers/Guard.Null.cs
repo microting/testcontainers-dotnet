@@ -1,49 +1,65 @@
 namespace DotNet.Testcontainers
 {
   using System;
-  using System.Diagnostics;
+  using System.Globalization;
 
   /// <summary>
-  /// Nullability preconditions.
+  /// A guard collection of nullability preconditions.
   /// </summary>
-  internal static partial class Guard
+  public static partial class Guard
   {
     /// <summary>
-    /// Ensures that an argument value is null.
+    /// Ensures the argument value is null.
     /// </summary>
-    /// <param name="argument">Argument to validate.</param>
-    /// <typeparam name="TType">Type of the argument.</typeparam>
-    /// <returns>Reference to the Guard object that validates the argument preconditions.</returns>
-    /// <exception cref="ArgumentException">Thrown when argument is not null.</exception>
-    [DebuggerStepThrough]
-    public static ref readonly ArgumentInfo<TType> Null<TType>(in this ArgumentInfo<TType> argument)
-      where TType : class
-    {
-      if (argument.HasValue())
-      {
-        throw new ArgumentException($"{argument.Name} must be null.", argument.Name);
-      }
-
-      return ref argument;
-    }
-
-    /// <summary>
-    /// Ensures that an argument value is not null.
-    /// </summary>
-    /// <param name="argument">Argument to validate.</param>
-    /// <typeparam name="TType">Type of the argument.</typeparam>
-    /// <returns>Reference to the Guard object that validates the argument preconditions.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when argument is null.</exception>
-    [DebuggerStepThrough]
-    public static ref readonly ArgumentInfo<TType> NotNull<TType>(in this ArgumentInfo<TType> argument)
+    /// <param name="argument">The argument.</param>
+    /// <param name="exceptionMessage">The exception message.</param>
+    /// <typeparam name="TType">The type.</typeparam>
+    /// <returns>An instance of the <see cref="ArgumentInfo{TType}" /> struct.</returns>
+    /// <exception cref="ArgumentException">Thrown when the condition is not met.</exception>
+    public static ref readonly ArgumentInfo<TType> Null<TType>(in this ArgumentInfo<TType> argument, string exceptionMessage = null)
       where TType : class
     {
       if (!argument.HasValue())
       {
-        throw new ArgumentNullException(argument.Name, $"{argument.Name} can not be null.");
+        return ref argument;
       }
 
-      return ref argument;
+      const string message = "'{0}' must be null.";
+      throw new ArgumentException(exceptionMessage ?? string.Format(CultureInfo.InvariantCulture, message, argument.Name), argument.Name);
+    }
+
+    /// <summary>
+    /// Ensures the argument value is not null.
+    /// </summary>
+    /// <param name="argument">The argument.</param>
+    /// <param name="exceptionMessage">The exception message.</param>
+    /// <typeparam name="TType">The type.</typeparam>
+    /// <returns>An instance of the <see cref="ArgumentInfo{TType}" /> struct.</returns>
+    /// <exception cref="ArgumentException">Thrown when the condition is not met.</exception>
+    public static ref readonly ArgumentInfo<TType> NotNull<TType>(in this ArgumentInfo<TType> argument, string exceptionMessage = null)
+      where TType : class
+    {
+      if (argument.HasValue())
+      {
+        return ref argument;
+      }
+
+      const string message = "'{0}' cannot be null.";
+      throw new ArgumentException(exceptionMessage ?? string.Format(CultureInfo.InvariantCulture, message, argument.Name), argument.Name);
+    }
+
+    /// <summary>
+    /// Ensures the argument value not pass the predicate.
+    /// </summary>
+    /// <param name="argument">The argument.</param>
+    /// <param name="condition">The condition that raises the exception.</param>
+    /// <param name="ifClause">The function to invoke to create the exception object.</param>
+    /// <typeparam name="TType">The type.</typeparam>
+    /// <returns>An instance of the <see cref="ArgumentInfo{TType}" /> struct.</returns>
+    /// <exception cref="ArgumentException">Thrown when the condition is not met.</exception>
+    public static ArgumentInfo<TType> ThrowIf<TType>(in this ArgumentInfo<TType> argument, Func<ArgumentInfo<TType>, bool> condition, Func<ArgumentInfo<TType>, Exception> ifClause)
+    {
+      return condition(argument) ? throw ifClause(argument) : argument;
     }
   }
 }

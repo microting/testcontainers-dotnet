@@ -4,100 +4,130 @@
   using System.Collections.Generic;
   using System.IO;
   using System.Linq;
+  using System.Text;
   using System.Text.RegularExpressions;
+  using System.Threading;
+  using System.Threading.Tasks;
   using DotNet.Testcontainers.Configurations;
   using ICSharpCode.SharpZipLib.Tar;
   using Microsoft.Extensions.Logging;
 
   /// <summary>
-  /// Generates a tar archive with docker configuration files. The generated tar archive can be used to build a docker image.
+  /// Generates a tar archive with Docker configuration files. The tar archive can be used to build a Docker image.
   /// </summary>
   internal sealed class DockerfileArchive : ITarArchive
   {
-    private static readonly IOperatingSystem OS = new Unix();
+    private static readonly IOperatingSystem OS = new Unix(dockerEndpointAuthConfig: null);
 
     private readonly DirectoryInfo dockerfileDirectory;
 
-    private readonly IDockerImage image;
+    private readonly FileInfo dockerfile;
+
+    private readonly IImage image;
 
     private readonly ILogger logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DockerfileArchive" /> class.
     /// </summary>
-    /// <param name="dockerfileDirectory">Directory to docker configuration files.</param>
-    /// <param name="dockerfile">Name of the dockerfile, which is necessary to start the docker build.</param>
+    /// <param name="dockerfileDirectory">Directory to Docker configuration files.</param>
+    /// <param name="dockerfile">Name of the Dockerfile, which is necessary to start the Docker build.</param>
     /// <param name="image">Docker image information to create the tar archive for.</param>
     /// <param name="logger">The logger.</param>
-    public DockerfileArchive(string dockerfileDirectory, string dockerfile, IDockerImage image, ILogger logger)
-      : this(new DirectoryInfo(dockerfileDirectory), dockerfile, image, logger)
+    /// <exception cref="ArgumentException">Thrown when the Dockerfile directory does not exist or the directory does not contain a Dockerfile.</exception>
+    public DockerfileArchive(string dockerfileDirectory, string dockerfile, IImage image, ILogger logger)
+      : this(new DirectoryInfo(dockerfileDirectory), new FileInfo(dockerfile), image, logger)
     {
     }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DockerfileArchive" /> class.
     /// </summary>
-    /// <param name="dockerfileDirectory">Directory to docker configuration files.</param>
-    /// <param name="dockerfile">Name of the dockerfile, which is necessary to start the docker build.</param>
+    /// <param name="dockerfileDirectory">Directory to Docker configuration files.</param>
+    /// <param name="dockerfile">Name of the Dockerfile, which is necessary to start the Docker build.</param>
     /// <param name="image">Docker image information to create the tar archive for.</param>
     /// <param name="logger">The logger.</param>
-    /// <exception cref="ArgumentException">Will be thrown if the dockerfile directory does not exist or the directory does not contain a dockerfile.</exception>
-    public DockerfileArchive(DirectoryInfo dockerfileDirectory, string dockerfile, IDockerImage image, ILogger logger)
+    /// <exception cref="ArgumentException">Thrown when the Dockerfile directory does not exist or the directory does not contain a Dockerfile.</exception>
+    public DockerfileArchive(DirectoryInfo dockerfileDirectory, FileInfo dockerfile, IImage image, ILogger logger)
     {
       if (!dockerfileDirectory.Exists)
       {
         throw new ArgumentException($"Directory '{dockerfileDirectory.FullName}' does not exist.");
       }
 
-      if (!dockerfileDirectory.GetFiles(dockerfile, SearchOption.TopDirectoryOnly).Any())
+      if (!dockerfileDirectory.GetFiles(dockerfile.ToString(), SearchOption.TopDirectoryOnly).Any())
       {
         throw new ArgumentException($"{dockerfile} does not exist in '{dockerfileDirectory.FullName}'.");
       }
 
       this.dockerfileDirectory = dockerfileDirectory;
+      this.dockerfile = dockerfile;
       this.image = image;
       this.logger = logger;
     }
 
     /// <inheritdoc />
-    public string Tar()
+    public async Task<string> Tar(CancellationToken ct = default)
     {
-      var dockerfileArchiveName = Regex.Replace(this.image.FullName, "[^a-zA-Z0-9]", "-").ToLowerInvariant();
+      var dockerfileDirectoryPath = OS.NormalizePath(this.dockerfileDirectory.FullName);
 
-      var dockerfileArchivePath = Path.Combine(Path.GetTempPath(), $"{dockerfileArchiveName}.tar");
+      var dockerfileFilePath = OS.NormalizePath(this.dockerfile.ToString());
 
-      var dockerIgnoreFile = new DockerIgnoreFile(this.dockerfileDirectory.FullName, ".dockerignore", this.logger);
+      var dockerfileArchiveFileName = Regex.Replace(this.image.FullName, "[^a-zA-Z0-9]", "-", RegexOptions.None, TimeSpan.FromSeconds(1)).ToLowerInvariant();
 
-      using (var stream = new FileStream(dockerfileArchivePath, FileMode.Create))
+      var dockerfileArchiveFilePath = Path.Combine(Path.GetTempPath(), $"{dockerfileArchiveFileName}.tar");
+
+      var dockerIgnoreFile = new DockerIgnoreFile(dockerfileDirectoryPath, ".dockerignore", dockerfileFilePath, this.logger);
+
+      using (var tarOutputFileStream = new FileStream(dockerfileArchiveFilePath, FileMode.Create, FileAccess.Write))
       {
-        using (var tarArchive = TarArchive.CreateOutputTarArchive(stream))
+        using (var tarOutputStream = new TarOutputStream(tarOutputFileStream, Encoding.Default))
         {
-          tarArchive.RootPath = OS.NormalizePath(this.dockerfileDirectory.FullName);
+          tarOutputStream.IsStreamOwner = false;
 
-          foreach (var file in GetFiles(this.dockerfileDirectory.FullName))
+          foreach (var absoluteFilePath in GetFiles(dockerfileDirectoryPath))
           {
-            var relativePath = file.Substring(tarArchive.RootPath.Length + 1);
+            // SharpZipLib drops the root path: https://github.com/icsharpcode/SharpZipLib/pull/582.
+            var relativeFilePath = absoluteFilePath.Substring(dockerfileDirectoryPath.TrimEnd(Path.AltDirectorySeparatorChar).Length + 1);
 
-            if (dockerIgnoreFile.Denies(relativePath))
+            if (dockerIgnoreFile.Denies(relativeFilePath))
             {
               continue;
             }
 
-            var tarEntry = TarEntry.CreateEntryFromFile(file);
-            tarEntry.Name = relativePath;
-            tarArchive.WriteEntry(tarEntry, true);
+            try
+            {
+              using (var inputStream = new FileStream(absoluteFilePath, FileMode.Open, FileAccess.Read))
+              {
+                var entry = TarEntry.CreateTarEntry(relativeFilePath);
+                entry.Size = inputStream.Length;
+
+                await tarOutputStream.PutNextEntryAsync(entry, ct)
+                  .ConfigureAwait(false);
+
+                await inputStream.CopyToAsync(tarOutputStream, 4096, ct)
+                  .ConfigureAwait(false);
+
+                await tarOutputStream.CloseEntryAsync(ct)
+                  .ConfigureAwait(false);
+              }
+            }
+            catch (IOException e)
+            {
+              throw new IOException("Cannot create Docker image tar archive.", e);
+            }
           }
         }
       }
 
-      return dockerfileArchivePath;
+      return dockerfileArchiveFilePath;
     }
 
     /// <summary>
-    /// Gets all accepted docker archive files.
+    /// Gets all accepted Docker archive files.
     /// </summary>
-    /// <param name="directory">Directory to docker configuration files.</param>
-    /// <returns>Returns a list with all accepted docker archive files.</returns>
+    /// <param name="directory">Directory to Docker configuration files.</param>
+    /// <returns>Returns a list with all accepted Docker archive files.</returns>
     private static IEnumerable<string> GetFiles(string directory)
     {
       return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)

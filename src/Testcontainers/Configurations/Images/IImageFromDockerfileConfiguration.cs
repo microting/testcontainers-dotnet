@@ -1,17 +1,20 @@
-namespace DotNet.Testcontainers.Configurations
+﻿namespace DotNet.Testcontainers.Configurations
 {
   using System.Collections.Generic;
+  using Docker.DotNet.Models;
   using DotNet.Testcontainers.Images;
+  using JetBrains.Annotations;
 
   /// <summary>
-  /// A Dockerfile configuration.
+  /// An image configuration.
   /// </summary>
-  public interface IImageFromDockerfileConfiguration : IDockerResourceConfiguration
+  [PublicAPI]
+  public interface IImageFromDockerfileConfiguration : IResourceConfiguration<ImageBuildParameters>
   {
     /// <summary>
-    /// Gets a value indicating whether an existing image is removed or not.
+    /// Gets a value indicating whether Testcontainers removes an existing image or not.
     /// </summary>
-    bool DeleteIfExists { get; }
+    bool? DeleteIfExists { get; }
 
     /// <summary>
     /// Gets the Dockerfile.
@@ -24,12 +27,12 @@ namespace DotNet.Testcontainers.Configurations
     string DockerfileDirectory { get; }
 
     /// <summary>
-    /// Gets the Docker image.
+    /// Gets the image.
     /// </summary>
-    IDockerImage Image { get; }
+    IImage Image { get; }
 
     /// <summary>
-    /// Gets a list of Docker build arguments.
+    /// Gets a list of build arguments.
     /// </summary>
     IReadOnlyDictionary<string, string> BuildArguments { get; }
   }

@@ -6,30 +6,33 @@ namespace DotNet.Testcontainers.Tests.Unit
   using System.Text;
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Builders;
-  using DotNet.Testcontainers.Configurations;
+  using DotNet.Testcontainers.Commons;
   using DotNet.Testcontainers.Images;
   using ICSharpCode.SharpZipLib.Tar;
+  using Microsoft.Extensions.Logging.Abstractions;
   using Xunit;
 
-  [Collection(nameof(Testcontainers))]
   public sealed class ImageFromDockerfileTest
   {
     [Fact]
-    public void DockerfileArchiveTar()
+    public async Task DockerfileArchiveTar()
     {
       // Given
-      var image = new DockerImage("testcontainers", "test", "1.0.0");
+      var image = new DockerImage("testcontainers", "test", "0.1.0");
 
-      var expected = new SortedSet<string> { "Dockerfile", "setup/setup.sh" };
+      var expected = new SortedSet<string> { ".dockerignore", "Dockerfile", "setup/setup.sh" };
 
       var actual = new SortedSet<string>();
 
-      var dockerFileArchive = new DockerfileArchive("Assets", "Dockerfile", image, TestcontainersSettings.Logger);
+      var dockerfileArchive = new DockerfileArchive("Assets", "Dockerfile", image, NullLogger.Instance);
+
+      var dockerfileArchiveFilePath = await dockerfileArchive.Tar()
+        .ConfigureAwait(false);
 
       // When
-      using (var tarOut = new FileInfo(dockerFileArchive.Tar()).OpenRead())
+      using (var tarOut = new FileStream(dockerfileArchiveFilePath, FileMode.Open, FileAccess.Read))
       {
-        using (var tarIn = TarArchive.CreateInputTarArchive(tarOut, Encoding.UTF8))
+        using (var tarIn = TarArchive.CreateInputTarArchive(tarOut, Encoding.Default))
         {
           tarIn.ProgressMessageEvent += (_, entry, _) => actual.Add(entry.Name);
           tarIn.ListContents();
@@ -41,51 +44,73 @@ namespace DotNet.Testcontainers.Tests.Unit
     }
 
     [Fact]
-    public async Task DockerfileDoesNotExist()
+    public async Task ThrowsDockerfileDoesNotExist()
     {
       // Given
-      var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-        new ImageFromDockerfileBuilder()
-          .WithDockerfile("Dockerfile")
-          .WithDockerfileDirectory(".")
-          .Build());
+      var dockerfileDirectory = Directory.GetCurrentDirectory();
 
-      // When
-      // Then
-      Assert.Equal($"Dockerfile does not exist in '{new DirectoryInfo(".").FullName}'.", exception.Message);
-    }
-
-    [Fact]
-    public async Task DockerfileDirectoryDoesNotExist()
-    {
-      // Given
-      var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-        new ImageFromDockerfileBuilder()
-          .WithDockerfileDirectory("DoesNotExist")
-          .Build());
-
-      // When
-      // Then
-      Assert.Equal($"Directory '{new DirectoryInfo("DoesNotExist").FullName}' does not exist.", exception.Message);
-    }
-
-    [Fact]
-    public async Task SimpleDockerfile()
-    {
-      // Given
       var imageFromDockerfileBuilder = new ImageFromDockerfileBuilder()
-        .WithName("alpine:custom")
-        .WithDockerfileDirectory("Assets")
-        .WithDeleteIfExists(true);
+        .WithDockerfile("Dockerfile")
+        .WithDockerfileDirectory(dockerfileDirectory)
+        .Build();
 
       // When
-      var imageFromDockerfile1 = await imageFromDockerfileBuilder.Build();
-      var imageFromDockerfile2 = await imageFromDockerfileBuilder.Build(); // Deletes the previously created image.
+      var exception = await Assert.ThrowsAsync<ArgumentException>(() => imageFromDockerfileBuilder.CreateAsync())
+        .ConfigureAwait(false);
 
       // Then
-      Assert.NotEmpty(imageFromDockerfile1);
-      Assert.NotEmpty(imageFromDockerfile2);
-      Assert.Equal(imageFromDockerfile1, imageFromDockerfile2);
+      Assert.Equal($"Dockerfile does not exist in '{Path.GetFullPath(dockerfileDirectory)}'.", exception.Message);
+    }
+
+    [Fact]
+    public async Task ThrowsDockerfileDirectoryDoesNotExist()
+    {
+      // Given
+      var dockerfileDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("D"));
+
+      var imageFromDockerfileBuilder = new ImageFromDockerfileBuilder()
+        .WithDockerfileDirectory(dockerfileDirectory)
+        .Build();
+
+      // When
+      var exception = await Assert.ThrowsAsync<ArgumentException>(() => imageFromDockerfileBuilder.CreateAsync())
+        .ConfigureAwait(false);
+
+      // Then
+      Assert.Equal($"Directory '{Path.GetFullPath(dockerfileDirectory)}' does not exist.", exception.Message);
+    }
+
+    [Fact]
+    public async Task BuildsDockerImage()
+    {
+      // Given
+      IImage tag1 = new DockerImage("localhost/testcontainers", Guid.NewGuid().ToString("D"), string.Empty);
+
+      IImage tag2 = new DockerImage("localhost/testcontainers", Guid.NewGuid().ToString("D"), string.Empty);
+
+      var imageFromDockerfileBuilder = new ImageFromDockerfileBuilder()
+        .WithName(tag1)
+        .WithDockerfile("Dockerfile")
+        .WithDockerfileDirectory("Assets")
+        .WithDeleteIfExists(true)
+        .WithCreateParameterModifier(parameterModifier => parameterModifier.Tags.Add(tag2.FullName))
+        .Build();
+
+      // When
+      await imageFromDockerfileBuilder.CreateAsync()
+        .ConfigureAwait(false);
+
+      await imageFromDockerfileBuilder.CreateAsync()
+        .ConfigureAwait(false);
+
+      // Then
+      Assert.True(DockerCli.ResourceExists(DockerCli.DockerResource.Image, tag1.FullName));
+      Assert.True(DockerCli.ResourceExists(DockerCli.DockerResource.Image, tag2.FullName));
+      Assert.NotNull(imageFromDockerfileBuilder.Repository);
+      Assert.NotNull(imageFromDockerfileBuilder.Name);
+      Assert.NotNull(imageFromDockerfileBuilder.Tag);
+      Assert.NotNull(imageFromDockerfileBuilder.FullName);
+      Assert.Null(imageFromDockerfileBuilder.GetHostname());
     }
   }
 }

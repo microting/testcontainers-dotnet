@@ -1,6 +1,8 @@
 namespace DotNet.Testcontainers.Clients
 {
+  using System;
   using System.Collections.Generic;
+  using System.Globalization;
   using System.IO;
   using System.Linq;
   using System.Threading;
@@ -14,8 +16,8 @@ namespace DotNet.Testcontainers.Clients
   {
     private readonly ILogger logger;
 
-    public DockerContainerOperations(IDockerEndpointAuthenticationConfiguration dockerEndpointAuthConfig, ILogger logger)
-      : base(dockerEndpointAuthConfig)
+    public DockerContainerOperations(Guid sessionId, IDockerEndpointAuthenticationConfiguration dockerEndpointAuthConfig, ILogger logger)
+      : base(sessionId, dockerEndpointAuthConfig)
     {
       this.logger = logger;
     }
@@ -55,10 +57,29 @@ namespace DotNet.Testcontainers.Clients
         .ConfigureAwait(false) != null;
     }
 
-    public async Task<long> GetExitCode(string id, CancellationToken ct = default)
+    public async Task<long> GetExitCodeAsync(string id, CancellationToken ct = default)
     {
       return (await this.Docker.Containers.WaitContainerAsync(id, ct)
         .ConfigureAwait(false)).StatusCode;
+    }
+
+    public async Task<(string Stdout, string Stderr)> GetLogsAsync(string id, TimeSpan since, TimeSpan until, bool timestampsEnabled = true, CancellationToken ct = default)
+    {
+      var logsParameters = new ContainerLogsParameters
+      {
+        ShowStdout = true,
+        ShowStderr = true,
+        Since = since.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+        Until = until.TotalSeconds.ToString("0", CultureInfo.InvariantCulture),
+        Timestamps = timestampsEnabled,
+      };
+
+      using (var stdOutAndErrStream = await this.Docker.Containers.GetContainerLogsAsync(id, false, logsParameters, ct)
+        .ConfigureAwait(false))
+      {
+        return await stdOutAndErrStream.ReadOutputToEndAsync(ct)
+          .ConfigureAwait(false);
+      }
     }
 
     public Task StartAsync(string id, CancellationToken ct = default)
@@ -145,9 +166,9 @@ namespace DotNet.Testcontainers.Clients
       }
     }
 
-    public async Task<string> RunAsync(ITestcontainersConfiguration configuration, CancellationToken ct = default)
+    public async Task<string> RunAsync(IContainerConfiguration configuration, CancellationToken ct = default)
     {
-      var converter = new TestcontainersConfigurationConverter(configuration);
+      var converter = new ContainerConfigurationConverter(configuration);
 
       var hostConfig = new HostConfig
       {
@@ -167,6 +188,7 @@ namespace DotNet.Testcontainers.Clients
         Image = configuration.Image.FullName,
         Name = configuration.Name,
         Hostname = configuration.Hostname,
+        MacAddress = configuration.MacAddress,
         WorkingDir = configuration.WorkingDirectory,
         Entrypoint = converter.Entrypoint,
         Cmd = converter.Command,
@@ -185,12 +207,11 @@ namespace DotNet.Testcontainers.Clients
         }
       }
 
-      var id = (await this.Docker.Containers.CreateContainerAsync(createParameters, ct)
-        .ConfigureAwait(false)).ID;
+      var createContainerResponse = await this.Docker.Containers.CreateContainerAsync(createParameters, ct)
+        .ConfigureAwait(false);
 
-      this.logger.DockerContainerCreated(id);
-
-      return id;
+      this.logger.DockerContainerCreated(createContainerResponse.ID);
+      return createContainerResponse.ID;
     }
 
     public Task<ContainerInspectResponse> InspectAsync(string id, CancellationToken ct = default)

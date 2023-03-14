@@ -8,6 +8,7 @@
   using DotNet.Testcontainers.Builders;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Images;
+  using Microsoft.Extensions.Logging.Abstractions;
   using Xunit;
 
   public sealed class DockerRegistryAuthenticationProviderTest
@@ -37,7 +38,7 @@
     [InlineData("myregistry.azurecr.io/baz:foo/bar:1.0.0", "myregistry.azurecr.io")]
     public void GetHostnameFromDockerImage(string dockerImageName, string hostname)
     {
-      IDockerImage image = new DockerImage(dockerImageName);
+      IImage image = new DockerImage(dockerImageName);
       Assert.Equal(hostname, image.GetHostname());
     }
 
@@ -48,19 +49,35 @@
     public void GetHostnameFromHubImageNamePrefix(string repository, string name, string tag)
     {
       const string hubImageNamePrefix = "myregistry.azurecr.io";
-      IDockerImage image = new DockerImage(repository, name, tag, hubImageNamePrefix);
+      IImage image = new DockerImage(repository, name, tag, hubImageNamePrefix);
       Assert.Equal(hubImageNamePrefix, image.GetHostname());
     }
 
     [Fact]
     public void ShouldGetDefaultDockerRegistryAuthenticationConfiguration()
     {
-      var authenticationProvider = new DockerRegistryAuthenticationProvider("/tmp/docker.config", TestcontainersSettings.Logger);
-      Assert.Equal(default(DockerRegistryAuthenticationConfiguration), authenticationProvider.GetAuthConfig(DockerRegistry));
+      var authenticationProvider = new DockerRegistryAuthenticationProvider("/tmp/docker.config", NullLogger.Instance);
+      Assert.Equal(default(DockerRegistryAuthenticationConfiguration), authenticationProvider.GetAuthConfig("index.docker.io"));
     }
 
     public sealed class Base64ProviderTest
     {
+      [Theory]
+      [InlineData("{\"auths\":{\"ghcr.io\":{}}}")]
+      [InlineData("{\"auths\":{\"://ghcr.io\":{}}}")]
+      public void ResolvePartialDockerRegistry(string jsonDocument)
+      {
+        // Given
+        var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
+
+        // When
+        var authenticationProvider = new Base64Provider(jsonElement, NullLogger.Instance);
+
+        // Then
+        Assert.False(authenticationProvider.IsApplicable("ghcr"));
+        Assert.True(authenticationProvider.IsApplicable("ghcr.io"));
+      }
+
       [Theory]
       [InlineData("{}", false)]
       [InlineData("{\"auths\":null}", false)]
@@ -76,7 +93,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new Base64Provider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new Base64Provider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then
@@ -92,7 +109,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new Base64Provider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new Base64Provider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then
@@ -117,7 +134,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new CredsStoreProvider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new CredsStoreProvider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then
@@ -134,7 +151,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new CredsStoreProvider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new CredsStoreProvider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then
@@ -163,7 +180,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new CredsHelperProvider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new CredsHelperProvider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then
@@ -182,7 +199,7 @@
         var jsonElement = JsonDocument.Parse(jsonDocument).RootElement;
 
         // When
-        var authenticationProvider = new CredsHelperProvider(jsonElement, TestcontainersSettings.Logger);
+        var authenticationProvider = new CredsHelperProvider(jsonElement, NullLogger.Instance);
         var authConfig = authenticationProvider.GetAuthConfig(DockerRegistry);
 
         // Then

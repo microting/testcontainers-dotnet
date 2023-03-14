@@ -3,11 +3,11 @@ namespace DotNet.Testcontainers.Tests.Unit
   using System.IO;
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Builders;
+  using DotNet.Testcontainers.Commons;
   using DotNet.Testcontainers.Containers;
   using DotNet.Testcontainers.Tests.Fixtures;
   using Xunit;
 
-  [Collection(nameof(Testcontainers))]
   public sealed class TestcontainersVolumeTest : IClassFixture<VolumeFixture>, IAsyncLifetime
   {
     private const string Destination = "/tmp/";
@@ -21,11 +21,10 @@ namespace DotNet.Testcontainers.Tests.Unit
     public TestcontainersVolumeTest(VolumeFixture volumeFixture)
     {
       var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
-        .WithImage("alpine")
+        .WithImage(CommonImages.Alpine)
         .WithEntrypoint("/bin/sh", "-c")
         .WithCommand("touch /tmp/$(uname -n) && tail -f /dev/null")
-        .WithResourceReaperSessionId(volumeFixture.SessionId)
-        .WithVolumeMount(volumeFixture.Name, Destination)
+        .WithVolumeMount(volumeFixture.Volume.Name, Destination)
         .WithTmpfsMount(TmpfsDestination);
 
       this.testcontainer1 = testcontainersBuilder

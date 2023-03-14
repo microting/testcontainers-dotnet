@@ -13,8 +13,8 @@ namespace DotNet.Testcontainers.Clients
   {
     private readonly ILogger logger;
 
-    public DockerVolumeOperations(IDockerEndpointAuthenticationConfiguration dockerEndpointAuthConfig, ILogger logger)
-      : base(dockerEndpointAuthConfig)
+    public DockerVolumeOperations(Guid sessionId, IDockerEndpointAuthenticationConfiguration dockerEndpointAuthConfig, ILogger logger)
+      : base(sessionId, dockerEndpointAuthConfig)
     {
       this.logger = logger;
     }
@@ -53,20 +53,27 @@ namespace DotNet.Testcontainers.Clients
         .ConfigureAwait(false) != null;
     }
 
-    public async Task<string> CreateAsync(ITestcontainersVolumeConfiguration configuration, CancellationToken ct = default)
+    public async Task<string> CreateAsync(IVolumeConfiguration configuration, CancellationToken ct = default)
     {
       var createParameters = new VolumesCreateParameters
       {
         Name = configuration.Name,
-        Labels = configuration.Labels.ToDictionary(item => item.Key, item => item.Value),
+        Labels = configuration.Labels?.ToDictionary(item => item.Key, item => item.Value),
       };
 
-      var name = (await this.Docker.Volumes.CreateAsync(createParameters, ct)
-        .ConfigureAwait(false)).Name;
+      if (configuration.ParameterModifiers != null)
+      {
+        foreach (var parameterModifier in configuration.ParameterModifiers)
+        {
+          parameterModifier(createParameters);
+        }
+      }
 
-      this.logger.DockerVolumeCreated(name);
+      var createVolumeResponse = await this.Docker.Volumes.CreateAsync(createParameters, ct)
+        .ConfigureAwait(false);
 
-      return name;
+      this.logger.DockerVolumeCreated(createVolumeResponse.Name);
+      return createVolumeResponse.Name;
     }
 
     public Task DeleteAsync(string name, CancellationToken ct = default)

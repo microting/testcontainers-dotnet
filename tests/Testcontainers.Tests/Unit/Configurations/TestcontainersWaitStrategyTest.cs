@@ -4,7 +4,6 @@ namespace DotNet.Testcontainers.Tests.Unit
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Containers;
-  using Microsoft.Extensions.Logging;
   using Xunit;
 
   public static class TestcontainersWaitStrategyTest
@@ -12,25 +11,29 @@ namespace DotNet.Testcontainers.Tests.Unit
     public sealed class Finish : IWaitUntil, IWaitWhile
     {
       [Fact]
-      public async Task UntilImmediately()
+      public async Task ImmediatelyUntil()
       {
-        var exception = await Record.ExceptionAsync(() => WaitStrategy.WaitUntil(() => this.Until(null, null)));
+        var exception = await Record.ExceptionAsync(() => WaitStrategy.WaitUntilAsync(() => this.UntilAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)))
+          .ConfigureAwait(false);
+
         Assert.Null(exception);
       }
 
       [Fact]
-      public async Task WhileImmediately()
+      public async Task ImmediatelyWhile()
       {
-        var exception = await Record.ExceptionAsync(() => WaitStrategy.WaitWhile(() => this.While(null, null)));
+        var exception = await Record.ExceptionAsync(() => WaitStrategy.WaitWhileAsync(() => this.WhileAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)))
+          .ConfigureAwait(false);
+
         Assert.Null(exception);
       }
 
-      public Task<bool> Until(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> UntilAsync(IContainer container)
       {
         return Task.FromResult(true);
       }
 
-      public Task<bool> While(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> WhileAsync(IContainer container)
       {
         return Task.FromResult(false);
       }
@@ -39,23 +42,23 @@ namespace DotNet.Testcontainers.Tests.Unit
     public sealed class Timeout : IWaitUntil, IWaitWhile
     {
       [Fact]
-      public async Task UntilAfter1Ms()
+      public Task After100MsUntil()
       {
-        await Assert.ThrowsAsync<TimeoutException>(() => WaitStrategy.WaitUntil(() => this.Until(null, null), 1000, 1));
+        return Assert.ThrowsAsync<TimeoutException>(() => WaitStrategy.WaitUntilAsync(() => this.UntilAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)));
       }
 
       [Fact]
-      public async Task WhileAfter1Ms()
+      public Task After100MsWhile()
       {
-        await Assert.ThrowsAsync<TimeoutException>(() => WaitStrategy.WaitWhile(() => this.While(null, null), 1000, 1));
+        return Assert.ThrowsAsync<TimeoutException>(() => WaitStrategy.WaitWhileAsync(() => this.WhileAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)));
       }
 
-      public Task<bool> Until(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> UntilAsync(IContainer container)
       {
         return Task.FromResult(false);
       }
 
-      public Task<bool> While(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> WhileAsync(IContainer container)
       {
         return Task.FromResult(true);
       }
@@ -64,23 +67,23 @@ namespace DotNet.Testcontainers.Tests.Unit
     public sealed class Rethrow : IWaitUntil, IWaitWhile
     {
       [Fact]
-      public async Task RethrowUntil()
+      public Task RethrowUntil()
       {
-        await Assert.ThrowsAsync<NotImplementedException>(() => WaitStrategy.WaitUntil(() => this.Until(null, null)));
+        return Assert.ThrowsAsync<NotImplementedException>(() => WaitStrategy.WaitUntilAsync(() => this.UntilAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)));
       }
 
       [Fact]
-      public async Task RethrowWhile()
+      public Task RethrowWhile()
       {
-        await Assert.ThrowsAsync<NotImplementedException>(() => WaitStrategy.WaitWhile(() => this.While(null, null)));
+        return Assert.ThrowsAsync<NotImplementedException>(() => WaitStrategy.WaitWhileAsync(() => this.WhileAsync(null), TimeSpan.FromMilliseconds(25), TimeSpan.FromMilliseconds(100)));
       }
 
-      public Task<bool> Until(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> UntilAsync(IContainer container)
       {
         throw new NotImplementedException();
       }
 
-      public Task<bool> While(ITestcontainersContainer testcontainers, ILogger logger)
+      public Task<bool> WhileAsync(IContainer container)
       {
         throw new NotImplementedException();
       }

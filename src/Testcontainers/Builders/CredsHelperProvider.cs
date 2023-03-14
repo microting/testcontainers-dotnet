@@ -1,6 +1,5 @@
 ﻿namespace DotNet.Testcontainers.Builders
 {
-  using System;
   using System.Linq;
   using System.Text.Json;
   using DotNet.Testcontainers.Configurations;
@@ -40,11 +39,7 @@
     /// <inheritdoc />
     public bool IsApplicable(string hostname)
     {
-#if NETSTANDARD2_1_OR_GREATER
-      return !default(JsonElement).Equals(this.rootElement) && !JsonValueKind.Null.Equals(this.rootElement.ValueKind) && this.rootElement.EnumerateObject().Any(property => property.Name.Contains(hostname, StringComparison.OrdinalIgnoreCase));
-#else
-      return !default(JsonElement).Equals(this.rootElement) && !JsonValueKind.Null.Equals(this.rootElement.ValueKind) && this.rootElement.EnumerateObject().Any(property => property.Name.IndexOf(hostname, StringComparison.OrdinalIgnoreCase) >= 0);
-#endif
+      return !default(JsonElement).Equals(this.rootElement) && !JsonValueKind.Null.Equals(this.rootElement.ValueKind) && this.rootElement.EnumerateObject().Any(property => Base64Provider.HasDockerRegistryKey(property, hostname));
     }
 
     /// <inheritdoc />
@@ -57,11 +52,7 @@
         return null;
       }
 
-#if NETSTANDARD2_1_OR_GREATER
-      var registryEndpointProperty = this.rootElement.EnumerateObject().LastOrDefault(property => property.Name.Contains(hostname, StringComparison.OrdinalIgnoreCase));
-#else
-      var registryEndpointProperty = this.rootElement.EnumerateObject().LastOrDefault(property => property.Name.IndexOf(hostname, StringComparison.OrdinalIgnoreCase) >= 0);
-#endif
+      var registryEndpointProperty = this.rootElement.EnumerateObject().LastOrDefault(property => Base64Provider.HasDockerRegistryKey(property, hostname));
 
       if (!JsonValueKind.String.Equals(registryEndpointProperty.Value.ValueKind))
       {
@@ -90,20 +81,8 @@
         return null;
       }
 
-      var username = credential.TryGetProperty("Username", out var usernameProperty) ? usernameProperty.GetString() : null;
-
-      var password = credential.TryGetProperty("Secret", out var passwordProperty) ? passwordProperty.GetString() : null;
-
       this.logger.DockerRegistryCredentialFound(hostname);
-
-      if ("<token>".Equals(username, StringComparison.OrdinalIgnoreCase))
-      {
-        return new DockerRegistryAuthenticationConfiguration(hostname, null, null, password);
-      }
-      else
-      {
-        return new DockerRegistryAuthenticationConfiguration(hostname, username, password);
-      }
+      return new DockerRegistryAuthenticationConfiguration(hostname, credential);
     }
   }
 }

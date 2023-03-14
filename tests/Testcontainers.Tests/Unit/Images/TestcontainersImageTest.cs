@@ -10,10 +10,9 @@ namespace DotNet.Testcontainers.Tests.Unit
     [Fact]
     public void ShouldThrowArgumentNullExceptionWhenInstantiateDockerImage()
     {
-      Assert.Throws<ArgumentNullException>(() => new DockerImage((string)null));
-      Assert.Throws<ArgumentNullException>(() => new DockerImage(null, null, null));
-      Assert.Throws<ArgumentNullException>(() => new DockerImage("fedora", null, null));
-      Assert.Throws<ArgumentNullException>(() => new DockerImage("fedora", "httpd", null));
+      Assert.Throws<ArgumentException>(() => new DockerImage((string)null));
+      Assert.Throws<ArgumentException>(() => new DockerImage(null, null, null));
+      Assert.Throws<ArgumentException>(() => new DockerImage("fedora", null, null));
     }
 
     [Fact]
@@ -52,7 +51,7 @@ namespace DotNet.Testcontainers.Tests.Unit
       var expected = serializable.Image;
 
       // When
-      IDockerImage dockerImage = new DockerImage(fullName);
+      IImage dockerImage = new DockerImage(fullName);
 
       // Then
       Assert.Equal(expected.Repository, dockerImage.Repository);

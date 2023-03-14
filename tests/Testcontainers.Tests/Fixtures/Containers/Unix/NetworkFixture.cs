@@ -5,12 +5,14 @@
   using DotNet.Testcontainers.Builders;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Networks;
+  using JetBrains.Annotations;
   using Xunit;
 
+  [UsedImplicitly]
   public sealed class NetworkFixture : IAsyncLifetime
   {
-    public IDockerNetwork Network { get; }
-      = new TestcontainersNetworkBuilder()
+    public INetwork Network { get; }
+      = new NetworkBuilder()
         .WithDriver(NetworkDriver.Bridge)
         .WithName(Guid.NewGuid().ToString("D"))
         .Build();

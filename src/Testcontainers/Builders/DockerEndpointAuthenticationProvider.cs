@@ -1,11 +1,16 @@
 ﻿namespace DotNet.Testcontainers.Builders
 {
   using System;
+  using System.Threading;
+  using System.Threading.Tasks;
   using DotNet.Testcontainers.Configurations;
+  using DotNet.Testcontainers.Containers;
 
   /// <inheritdoc cref="IDockerEndpointAuthenticationProvider" />
   internal class DockerEndpointAuthenticationProvider : IDockerEndpointAuthenticationProvider
   {
+    private static readonly TaskFactory TaskFactory = new TaskFactory(CancellationToken.None, TaskCreationOptions.None, TaskContinuationOptions.None, TaskScheduler.Default);
+
     /// <inheritdoc />
     public virtual bool IsApplicable()
     {
@@ -22,21 +27,30 @@
         return false;
       }
 
-      using (var dockerClientConfiguration = authConfig.GetDockerClientConfiguration())
-      {
-        using (var dockerClient = dockerClientConfiguration.CreateClient())
+      return TaskFactory.StartNew(async () =>
         {
-          try
+          using (var dockerClientConfiguration = authConfig.GetDockerClientConfiguration(ResourceReaper.DefaultSessionId))
           {
-            dockerClient.System.PingAsync().GetAwaiter().GetResult();
-            return true;
+            using (var dockerClient = dockerClientConfiguration.CreateClient())
+            {
+              try
+              {
+                await dockerClient.System.PingAsync()
+                  .ConfigureAwait(false);
+
+                return true;
+              }
+              catch (Exception)
+              {
+                return false;
+              }
+            }
           }
-          catch (Exception)
-          {
-            return false;
-          }
-        }
-      }
+        })
+        .Unwrap()
+        .ConfigureAwait(false)
+        .GetAwaiter()
+        .GetResult();
     }
 
     /// <inheritdoc />

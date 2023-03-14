@@ -2,9 +2,9 @@ name: Continuous Integration & Delivery
 
 on:
   push:
-    branches: [ develop, master, bugfix/*, feature/* ]
+    branches: [ develop, main, bugfix/*, feature/* ]
   pull_request:
-    branches: [ develop, master ]
+    branches: [ develop, main ]
   workflow_dispatch:
     inputs:
       publish_nuget_package:
@@ -12,11 +12,16 @@ on:
         required: false
         type: boolean
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  cancel-in-progress: true
+
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   DOTNET_NOLOGO: true
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-  DOTNET_VERSION: 6.0.x
+  DOTNET_USE_POLLING_FILE_WATCHER: true
+  NUGET_XMLDOC_MODE: skip
   TZ: CET # https://stackoverflow.com/q/53510011
 
 jobs:
@@ -24,21 +29,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019]
+        os: [ ubuntu-22.04, windows-2022 ]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
-          clean: true
           lfs: true
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v2
+      - name: Cache NuGet Packages
+        uses: actions/cache@v3
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          key: ${{ matrix.os }}-nuget-${{ hashFiles('Directory.Build.props') }}
+          path: ~/.nuget/packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
 
       - name: Restore .NET Tools
         run: dotnet tool restore
@@ -50,64 +58,79 @@ jobs:
         run: dotnet cake --target=Build
 
       - name: Run Tests
-        run: dotnet cake --target=Tests --test-filter=FullyQualifiedName~${{ startsWith(matrix.os, 'ubuntu') && 'DotNet.Testcontainers' || 'DotNet.Testcontainers.Tests.Unit.Containers.Windows' }}
-
-      - name: Get Logs
-        run: Get-ChildItem -Path . -Include *.log -Recurse | % { Get-Content -Path $_.FullName }
-        shell: pwsh
-
-      - name: Rename Test And Coverage Results
-        run: Get-ChildItem -Path 'test-coverage' -Filter *.xml | Rename-Item -NewName { $_.Name -Replace 'coverage', '${{ matrix.os }}'.ToLower() }
-        shell: pwsh
+        run: dotnet cake --target=Tests --test-filter=FullyQualifiedName~${{ startsWith(matrix.os, 'ubuntu') && 'Testcontainers' || 'DotNet.Testcontainers.Tests.Unit.Containers.Windows' }}
 
       - name: Upload Test And Coverage Results
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.os }}
-          path: |
-            test-coverage
-            test-results
+          path: test-results
 
   publish:
-    if: ${{ contains(fromJson('["develop", "master"]'), github.ref_name) }}
+    if: ${{ contains(fromJson('["develop", "main"]'), github.ref_name) }}
 
     needs: build
 
     environment: production
 
-    runs-on: ubuntu-20.04
+    runs-on: windows-2022 # It looks like the Linux runner cannot sign the NuGet using a PFX file.
+
+    permissions:
+      contents: write
+      pull-requests: read
 
     env:
+      CODE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CODE_SIGNING_CERTIFICATE_BASE64 }}
+      CODE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CODE_SIGNING_CERTIFICATE_PASSWORD }}
       FEED_SOURCE: https://api.nuget.org/v3/index.json
-      FEED_APIKEY: ${{ secrets.FEED_APIKEY }}
+      FEED_API_KEY: ${{ secrets.FEED_API_KEY }}
       SONARCLOUD_URL: https://sonarcloud.io
       SONARCLOUD_ORGANIZATION: testcontainers
       SONARCLOUD_KEY: testcontainers_testcontainers-dotnet
       SONARCLOUD_TOKEN: ${{ secrets.SONARCLOUD_TOKEN }}
+      PUBLISH_NUGET_PACKAGE: ${{ inputs.publish_nuget_package }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
-          clean: true
           lfs: true
           fetch-depth: 0
 
-      - name: Download Test And Coverage Results (ubuntu-20.04)
+      - name: Download Test And Coverage Results (ubuntu-22.04)
         uses: actions/download-artifact@v3
         with:
-          name: ubuntu-20.04
+          name: ubuntu-22.04
+          path: test-results
 
-      - name: Download Test And Coverage Results (windows-2019)
+      - name: Download Test And Coverage Results (windows-2022)
         uses: actions/download-artifact@v3
         with:
-          name: windows-2019
+          name: windows-2022
+          path: test-results
 
       - name: Fix Absolute Code Coverage Paths
-        run: |
-          Get-ChildItem -Path 'test-coverage' -Filter *.xml | % { (Get-Content $_) -Replace '[A-Za-z0-9:\-\/\\]+src', '${{ github.workspace }}/src' | Set-Content $_ }
-          Get-ChildItem -Path 'test-coverage' -Filter *.xml | % { (Get-Content $_) -Replace '[A-Za-z0-9:\-\/\\]+tests', '${{ github.workspace }}/tests' | Set-Content $_ }
+        run: Get-ChildItem -Path 'test-results' -Filter *.xml -Recurse | Select-Object -ExpandProperty FullName | % { (Get-Content -LiteralPath $_) -Replace 'fullPath="[A-Za-z0-9:\-\/\\]+(src|tests)', 'fullPath="${{ github.workspace }}/$1' | Set-Content -LiteralPath $_ }
         shell: pwsh
+
+      - name: Decode Code Signing Certificate
+        run: echo $CODE_SIGNING_CERTIFICATE_BASE64 | base64 --decode > code-signing-certificate.pfx
+        shell: bash
+
+      - name: Cache NuGet Packages
+        uses: actions/cache@v3
+        with:
+          key: windows-2022-nuget-${{ hashFiles('Directory.Build.props') }}
+          path: ~/.nuget/packages
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
 
       - name: Restore .NET Tools
         run: dotnet tool restore
@@ -126,5 +149,9 @@ jobs:
 
       - name: Publish NuGet Package
         run: dotnet cake --target=Publish
+
+      - uses: release-drafter/release-drafter@6df64e4ba4842c203c604c1f45246c5863410adb
+        with:
+          version: ${{ env.semVer }} # Cake sets the semVer environment variable
         env:
-          PUBLISH_NUGET_PACKAGE: ${{ inputs.publish_nuget_package }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,35 +1,30 @@
 namespace DotNet.Testcontainers.Configurations
 {
-  using System.IO;
-  using System.Text;
+  using System;
   using System.Text.RegularExpressions;
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Containers;
-  using Microsoft.Extensions.Logging;
 
   internal class UntilMessageIsLogged : IWaitUntil
   {
-    private readonly string message;
+    private readonly Regex pattern;
 
-    private readonly Stream stream;
-
-    public UntilMessageIsLogged(Stream stream, string message)
+    public UntilMessageIsLogged(string pattern)
+      : this(new Regex(pattern, RegexOptions.None, TimeSpan.FromSeconds(5)))
     {
-      this.stream = stream;
-      this.message = message;
     }
 
-    public async Task<bool> Until(ITestcontainersContainer testcontainers, ILogger logger)
+    public UntilMessageIsLogged(Regex pattern)
     {
-      this.stream.Seek(0, SeekOrigin.Begin);
+      this.pattern = pattern;
+    }
 
-      using (var streamReader = new StreamReader(this.stream, Encoding.UTF8, false, 4096, true))
-      {
-        var output = await streamReader.ReadToEndAsync()
-          .ConfigureAwait(false);
+    public async Task<bool> UntilAsync(IContainer container)
+    {
+      var (stdout, stderr) = await container.GetLogsAsync(timestampsEnabled: false)
+        .ConfigureAwait(false);
 
-        return Regex.IsMatch(output, this.message);
-      }
+      return this.pattern.IsMatch(stdout) || this.pattern.IsMatch(stderr);
     }
   }
 }

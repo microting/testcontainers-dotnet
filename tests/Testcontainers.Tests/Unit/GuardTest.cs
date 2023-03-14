@@ -22,23 +22,33 @@ namespace DotNet.Testcontainers.Tests.Unit
           var exception = Record.Exception(() => Guard.Argument(new object(), nameof(this.IfNotNull)).NotNull());
           Assert.Null(exception);
         }
-      }
 
-      public sealed class ThrowArgumentNullExceptionMatchImage
-      {
         [Fact]
-        public void IfNull()
+        public void ThrowIf()
         {
-          Assert.Throws<ArgumentNullException>(() => Guard.Argument((object)null, nameof(this.IfNull)).NotNull());
+          var exception = Record.Exception(() => Guard.Argument(new object(), nameof(this.ThrowIf)).ThrowIf(_ => false, _ => new ArgumentException()));
+          Assert.Null(exception);
         }
       }
 
       public sealed class ThrowArgumentException
       {
         [Fact]
+        public void IfNull()
+        {
+          Assert.Throws<ArgumentException>(() => Guard.Argument((object)null, nameof(this.IfNull)).NotNull());
+        }
+
+        [Fact]
         public void IfNotNull()
         {
           Assert.Throws<ArgumentException>(() => Guard.Argument(new object(), nameof(this.IfNotNull)).Null());
+        }
+
+        [Fact]
+        public void ThrowIf()
+        {
+          Assert.Throws<ArgumentException>(() => Guard.Argument(new object(), nameof(this.ThrowIf)).ThrowIf(_ => true, _ => new ArgumentException()));
         }
       }
     }

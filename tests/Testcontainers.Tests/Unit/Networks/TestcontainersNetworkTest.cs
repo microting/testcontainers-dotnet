@@ -2,11 +2,11 @@ namespace DotNet.Testcontainers.Tests.Unit
 {
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Builders;
+  using DotNet.Testcontainers.Commons;
   using DotNet.Testcontainers.Containers;
   using DotNet.Testcontainers.Tests.Fixtures;
   using Xunit;
 
-  [Collection(nameof(Testcontainers))]
   public sealed class TestcontainersNetworkTest : IClassFixture<NetworkFixture>, IAsyncLifetime
   {
     private const string AliasSuffix = "-alias";
@@ -19,8 +19,8 @@ namespace DotNet.Testcontainers.Tests.Unit
     {
       var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
         .WithImage("alpine")
-        .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
-        .WithNetwork(networkFixture.Network.Id, networkFixture.Network.Name);
+        .WithEntrypoint(CommonCommands.SleepInfinity)
+        .WithNetwork(networkFixture.Network.Name);
 
       this.testcontainer1 = testcontainersBuilder
         .WithHostname(nameof(this.testcontainer1))

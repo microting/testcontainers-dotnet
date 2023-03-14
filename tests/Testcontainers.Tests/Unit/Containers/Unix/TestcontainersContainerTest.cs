@@ -1,38 +1,34 @@
 namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
 {
   using System;
-  using System.Globalization;
   using System.IO;
   using System.Net;
   using System.Net.Http;
   using System.Text;
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Builders;
-  using DotNet.Testcontainers.Clients;
+  using DotNet.Testcontainers.Commons;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Containers;
+  using DotNet.Testcontainers.Images;
   using DotNet.Testcontainers.Tests.Fixtures;
   using Xunit;
 
   public static class TestcontainersContainerTest
   {
-    // We cannot use `Path.GetTempPath()` on macOS, see: https://github.com/common-workflow-language/cwltool/issues/328.
-    private static readonly string TempDir = Environment.GetEnvironmentVariable("AGENT_TEMPDIRECTORY") ?? Directory.GetCurrentDirectory();
+    private static readonly string TempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("D"));
 
-    [Collection(nameof(Testcontainers))]
+    static TestcontainersContainerTest()
+    {
+      _ = Directory.CreateDirectory(TempPath);
+    }
+
     public sealed class WithConfiguration
     {
       [Fact]
-      public async Task IsLinuxEngineEnabled()
-      {
-        var client = new TestcontainersClient();
-        Assert.False(await client.GetIsWindowsEngineEnabled());
-      }
-
-      [Fact]
       public void ShouldThrowArgumentNullExceptionWhenBuildConfigurationHasNoImage()
       {
-        Assert.Throws<ArgumentNullException>(() => _ = new TestcontainersBuilder<TestcontainersContainer>().Build());
+        Assert.Throws<ArgumentException>(() => _ = new TestcontainersBuilder<TestcontainersContainer>().Build());
       }
 
       [Fact]
@@ -41,7 +37,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -61,7 +57,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // When
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
+          .WithEntrypoint(CommonCommands.SleepInfinity)
           .WithName(name);
 
         // Then
@@ -89,6 +85,26 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         {
           await testcontainer.StartAsync();
           Assert.Equal(0, await testcontainer.GetExitCode());
+        }
+      }
+
+      [Fact]
+      public async Task MacAddress()
+      {
+        // Given
+        const string macAddress = "92:95:5e:30:fe:6d";
+
+        // When
+        var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
+          .WithImage("alpine")
+          .WithEntrypoint(CommonCommands.SleepInfinity)
+          .WithMacAddress(macAddress);
+
+        // Then
+        await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
+        {
+          await testcontainer.StartAsync();
+          Assert.Equal(macAddress, testcontainer.MacAddress);
         }
       }
 
@@ -133,7 +149,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
+          .WithEntrypoint(CommonCommands.SleepInfinity)
           .WithExposedPort(80);
 
         // When
@@ -179,7 +195,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("nginx")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
+          .WithEntrypoint(CommonCommands.SleepInfinity)
           .WithPortBinding(80, true);
 
         // When
@@ -204,9 +220,9 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
           .WithImage("nginx")
           .WithEntrypoint("/bin/sh", "-c")
           .WithCommand($"hostname > /{target}/{file} && tail -f /dev/null")
-          .WithBindMount(TempDir, $"/{target}")
+          .WithBindMount(TempPath, $"/{target}")
           .WithWaitStrategy(Wait.ForUnixContainer()
-            .UntilFileExists(Path.Combine(TempDir, file)));
+            .UntilFileExists(Path.Combine(TempPath, file)));
 
         await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
         {
@@ -214,7 +230,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         }
 
         // Then
-        Assert.True(File.Exists(Path.Combine(TempDir, file)), $"{file} does not exist.");
+        Assert.True(File.Exists(Path.Combine(TempPath, file)), $"{file} does not exist.");
       }
 
       [Fact]
@@ -233,10 +249,10 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
           .WithNetworkAliases("Foo")
           .WithEntrypoint("/bin/sh", "-c", $"printf $dayOfWeek > /{target}/{file} && tail -f /dev/null")
           .WithEnvironment("dayOfWeek", dayOfWeek)
-          .WithBindMount(TempDir, $"/{target}")
+          .WithBindMount(TempPath, $"/{target}")
           .ConfigureContainer(_ => { }) // https://github.com/testcontainers/testcontainers-dotnet/issues/507.
           .WithWaitStrategy(Wait.ForUnixContainer()
-            .UntilFileExists(Path.Combine(TempDir, file)));
+            .UntilFileExists(Path.Combine(TempPath, file)));
 
         await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
         {
@@ -244,7 +260,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         }
 
         // Then
-        Assert.Equal(dayOfWeek, await File.ReadAllTextAsync(Path.Combine(TempDir, file)));
+        Assert.Equal(dayOfWeek, await File.ReadAllTextAsync(Path.Combine(TempPath, file)));
       }
 
       [Fact]
@@ -254,7 +270,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithDockerEndpoint(TestcontainersSettings.OS.DockerEndpointAuthConfig)
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -266,8 +282,8 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
       }
 
       [Theory]
-      [InlineData("localhost", "npipe://./pipe/docker_engine")]
-      [InlineData("localhost", "unix:/var/run/docker.sock")]
+      [InlineData("127.0.0.1", "npipe://./pipe/docker_engine")]
+      [InlineData("127.0.0.1", "unix:/var/run/docker.sock")]
       [InlineData("docker", "http://docker")]
       [InlineData("docker", "https://docker")]
       [InlineData("docker", "tcp://docker")]
@@ -290,50 +306,12 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
       }
 
       [Fact]
-      public async Task OutputConsumer()
-      {
-        // Given
-        var unixTimeInMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
-
-        using (var consumer = Consume.RedirectStdoutAndStderrToStream(new MemoryStream(), new MemoryStream()))
-        {
-          // When
-          var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
-            .WithImage("alpine")
-            .WithEntrypoint("/bin/sh", "-c", $"printf \"{unixTimeInMilliseconds}\" | tee /dev/stderr && tail -f /dev/null")
-            .WithOutputConsumer(consumer)
-            .WithWaitStrategy(Wait.ForUnixContainer()
-              .UntilMessageIsLogged(consumer.Stdout, unixTimeInMilliseconds)
-              .UntilMessageIsLogged(consumer.Stderr, unixTimeInMilliseconds));
-
-          await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
-          {
-            await testcontainer.StartAsync();
-          }
-
-          consumer.Stdout.Seek(0, SeekOrigin.Begin);
-          consumer.Stderr.Seek(0, SeekOrigin.Begin);
-
-          // Then
-          using (var streamReader = new StreamReader(consumer.Stdout, leaveOpen: true))
-          {
-            Assert.Equal(unixTimeInMilliseconds, await streamReader.ReadToEndAsync());
-          }
-
-          using (var streamReader = new StreamReader(consumer.Stderr, leaveOpen: true))
-          {
-            Assert.Equal(unixTimeInMilliseconds, await streamReader.ReadToEndAsync());
-          }
-        }
-      }
-
-      [Fact]
       public async Task WaitStrategy()
       {
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
+          .WithEntrypoint(CommonCommands.SleepInfinity)
           .WithWaitStrategy(Wait.ForUnixContainer()
             .AddCustomWaitStrategy(new WaitUntilFiveSecondsPassedFixture()));
 
@@ -352,7 +330,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -370,7 +348,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -388,7 +366,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // Given
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -410,7 +388,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
 
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         // Then
@@ -433,7 +411,7 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
           .WithImage("alpine")
           .WithAutoRemove(false)
           .WithCleanUp(false)
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .WithEntrypoint(CommonCommands.SleepInfinity);
 
         // When
         await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
@@ -443,30 +421,34 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         }
 
         // Then
-        Assert.True(Docker.Exists(DockerResource.Container, testcontainerId));
+        Assert.True(DockerCli.ResourceExists(DockerCli.DockerResource.Container, testcontainerId));
       }
 
       [Fact]
       public async Task AutoRemoveTrueShouldRemoveContainer()
       {
         // Given
-        string testcontainerId;
-
-        var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
-          .WithImage("alpine")
+        var container = new ContainerBuilder()
+          .WithImage(CommonImages.Alpine)
+          .WithEntrypoint(CommonCommands.SleepInfinity)
           .WithAutoRemove(true)
           .WithCleanUp(false)
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command);
+          .Build();
 
         // When
-        await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
-        {
-          await testcontainer.StartAsync();
-          testcontainerId = testcontainer.Id;
-        }
+        await container.StartAsync()
+          .ConfigureAwait(false);
+
+        var id = container.Id;
+
+        await container.DisposeAsync()
+          .ConfigureAwait(false);
+
+        await Task.Delay(TimeSpan.FromSeconds(1))
+          .ConfigureAwait(false);
 
         // Then
-        Assert.False(Docker.Exists(DockerResource.Container, testcontainerId));
+        Assert.False(DockerCli.ResourceExists(DockerCli.DockerResource.Container, id));
       }
 
       [Fact]
@@ -478,15 +460,35 @@ namespace DotNet.Testcontainers.Tests.Unit.Containers.Unix
         // When
         var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
           .WithImage("alpine")
-          .WithEntrypoint(KeepTestcontainersUpAndRunning.Command)
-          .WithCreateContainerParametersModifier(parameters => parameters.Name = "placeholder")
-          .WithCreateContainerParametersModifier(parameters => parameters.Name = name);
+          .WithEntrypoint(CommonCommands.SleepInfinity)
+          .WithCreateParameterModifier(parameters => parameters.Name = "placeholder")
+          .WithCreateParameterModifier(parameters => parameters.Name = name);
 
         // Then
         await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
         {
           await testcontainer.StartAsync();
           Assert.EndsWith(name, testcontainer.Name);
+        }
+      }
+
+      [Fact]
+      public async Task PullPolicyNever()
+      {
+        // Given
+        // An image that actually exists but was not used/pulled previously
+        // If this image is cached/pulled before, this test will fail
+        const string uncachedImage = "alpine:edge";
+
+        // When
+        var testcontainersBuilder = new TestcontainersBuilder<TestcontainersContainer>()
+          .WithImage(uncachedImage)
+          .WithImagePullPolicy(PullPolicy.Never);
+
+        // Then
+        await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
+        {
+          await Assert.ThrowsAnyAsync<Exception>(() => testcontainer.StartAsync());
         }
       }
     }

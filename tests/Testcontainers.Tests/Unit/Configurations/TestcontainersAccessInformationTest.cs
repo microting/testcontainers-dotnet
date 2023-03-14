@@ -6,11 +6,11 @@ namespace DotNet.Testcontainers.Tests.Unit
   using DotNet.Testcontainers.Clients;
   using DotNet.Testcontainers.Configurations;
   using DotNet.Testcontainers.Containers;
+  using Microsoft.Extensions.Logging.Abstractions;
   using Xunit;
 
   public static class TestcontainersAccessInformationTest
   {
-    [Collection(nameof(Testcontainers))]
     public sealed class AccessDockerInformation
     {
       private const string DoesNotExist = nameof(TestcontainersAccessInformationTest);
@@ -18,37 +18,37 @@ namespace DotNet.Testcontainers.Tests.Unit
       [Fact]
       public async Task QueryNotExistingDockerImageById()
       {
-        Assert.False(await new DockerImageOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithIdAsync(DoesNotExist));
+        Assert.False(await new DockerImageOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithIdAsync(DoesNotExist));
       }
 
       [Fact]
       public async Task QueryNotExistingDockerContainerById()
       {
-        Assert.False(await new DockerContainerOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithIdAsync(DoesNotExist));
+        Assert.False(await new DockerContainerOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithIdAsync(DoesNotExist));
       }
 
       [Fact]
       public async Task QueryNotExistingDockerNetworkById()
       {
-        Assert.False(await new DockerNetworkOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithIdAsync(DoesNotExist));
+        Assert.False(await new DockerNetworkOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithIdAsync(DoesNotExist));
       }
 
       [Fact]
       public async Task QueryNotExistingDockerImageByName()
       {
-        Assert.False(await new DockerImageOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithNameAsync(DoesNotExist));
+        Assert.False(await new DockerImageOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithNameAsync(DoesNotExist));
       }
 
       [Fact]
       public async Task QueryNotExistingDockerContainerByName()
       {
-        Assert.False(await new DockerContainerOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithNameAsync(DoesNotExist));
+        Assert.False(await new DockerContainerOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithNameAsync(DoesNotExist));
       }
 
       [Fact]
       public async Task QueryNotExistingDockerNetworkByName()
       {
-        Assert.False(await new DockerNetworkOperations(TestcontainersSettings.OS.DockerEndpointAuthConfig, TestcontainersSettings.Logger).ExistsWithNameAsync(DoesNotExist));
+        Assert.False(await new DockerNetworkOperations(Guid.Empty, TestcontainersSettings.OS.DockerEndpointAuthConfig, NullLogger.Instance).ExistsWithNameAsync(DoesNotExist));
       }
 
       [Fact]
@@ -68,6 +68,7 @@ namespace DotNet.Testcontainers.Tests.Unit
           Assert.NotEmpty(testcontainer.Name);
           Assert.NotEmpty(testcontainer.IpAddress);
           Assert.NotEmpty(testcontainer.MacAddress);
+          Assert.NotEmpty(testcontainer.Hostname);
         }
       }
 
@@ -82,26 +83,59 @@ namespace DotNet.Testcontainers.Tests.Unit
         // Then
         await using (ITestcontainersContainer testcontainer = testcontainersBuilder.Build())
         {
+          Assert.Throws<InvalidOperationException>(() => testcontainer.Id);
           Assert.Throws<InvalidOperationException>(() => testcontainer.Name);
           Assert.Throws<InvalidOperationException>(() => testcontainer.IpAddress);
           Assert.Throws<InvalidOperationException>(() => testcontainer.MacAddress);
           Assert.Throws<InvalidOperationException>(() => testcontainer.GetMappedPublicPort(0));
-          await Assert.ThrowsAsync<InvalidOperationException>(() => testcontainer.StopAsync());
+          Assert.Equal(TestcontainersStates.Undefined, testcontainer.State);
+          Assert.Equal(TestcontainersHealthStatus.Undefined, testcontainer.Health);
         }
+      }
+
+      [Fact]
+      public void QueryImageInformationOfNotCreatedImage()
+      {
+        // Given
+        var imageBuilder = new ImageFromDockerfileBuilder();
+
+        // When
+        var image = imageBuilder.Build();
+
+        // Then
+        Assert.Throws<InvalidOperationException>(() => image.Repository);
+        Assert.Throws<InvalidOperationException>(() => image.Name);
+        Assert.Throws<InvalidOperationException>(() => image.Tag);
+        Assert.Throws<InvalidOperationException>(() => image.FullName);
+        Assert.Throws<InvalidOperationException>(() => image.GetHostname());
       }
 
       [Fact]
       public void QueryNetworkInformationOfNotCreatedNetwork()
       {
         // Given
-        var networkBuilder = new TestcontainersNetworkBuilder();
+        var networkBuilder = new NetworkBuilder()
+          .WithName(Guid.NewGuid().ToString("D"));
 
         // When
         var network = networkBuilder.Build();
 
         // Then
-        Assert.Throws<InvalidOperationException>(() => network.Id);
         Assert.Throws<InvalidOperationException>(() => network.Name);
+      }
+
+      [Fact]
+      public void QueryVolumeInformationOfNotCreatedVolume()
+      {
+        // Given
+        var volumeBuilder = new VolumeBuilder()
+          .WithName(Guid.NewGuid().ToString("D"));
+
+        // When
+        var volume = volumeBuilder.Build();
+
+        // Then
+        Assert.Throws<InvalidOperationException>(() => volume.Name);
       }
     }
   }

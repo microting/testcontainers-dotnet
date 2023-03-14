@@ -1,8 +1,9 @@
-﻿namespace DotNet.Testcontainers.Configurations
+namespace DotNet.Testcontainers.Configurations
 {
   using System;
   using System.IO;
   using System.Linq;
+  using System.Text.Json;
   using DotNet.Testcontainers.Images;
 
   /// <summary>
@@ -10,6 +11,10 @@
   /// </summary>
   internal sealed class PropertiesFileConfiguration : CustomConfiguration, ICustomConfiguration
   {
+    static PropertiesFileConfiguration()
+    {
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="PropertiesFileConfiguration" /> class.
     /// </summary>
@@ -29,6 +34,10 @@
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PropertiesFileConfiguration" /> class.
+    /// </summary>
+    /// <param name="lines">A list of Java properties file lines.</param>
     public PropertiesFileConfiguration(params string[] lines)
       : base(lines
         .Select(line => line.Trim())
@@ -41,11 +50,66 @@
     {
     }
 
+    /// <summary>
+    /// Gets the <see cref="ICustomConfiguration" /> instance.
+    /// </summary>
+    public static ICustomConfiguration Instance { get; }
+      = new PropertiesFileConfiguration();
+
+    /// <inheritdoc />
+    public string GetDockerConfig()
+    {
+      const string propertyName = "docker.config";
+      return this.GetDockerConfig(propertyName);
+    }
+
     /// <inheritdoc />
     public Uri GetDockerHost()
     {
       const string propertyName = "docker.host";
       return this.GetDockerHost(propertyName);
+    }
+
+    /// <inheritdoc />
+    public string GetDockerHostOverride()
+    {
+      const string propertyName = "host.override";
+      return this.GetDockerHostOverride(propertyName);
+    }
+
+    /// <inheritdoc />
+    public string GetDockerSocketOverride()
+    {
+      const string propertyName = "docker.socket.override";
+      return this.GetDockerSocketOverride(propertyName);
+    }
+
+    /// <inheritdoc />
+    public JsonDocument GetDockerAuthConfig()
+    {
+      const string propertyName = "docker.auth.config";
+      return this.GetDockerAuthConfig(propertyName);
+    }
+
+    /// <inheritdoc />
+    public string GetDockerCertPath()
+    {
+      const string propertyName = "docker.cert.path";
+      return this.GetDockerCertPath(propertyName);
+    }
+
+    /// <inheritdoc />
+    public bool GetDockerTls()
+    {
+      const string propertyName = "docker.tls";
+      return this.GetDockerTls(propertyName);
+    }
+
+    /// <inheritdoc />
+    public bool GetDockerTlsVerify()
+    {
+      const string propertyName = "docker.tls.verify";
+      return this.GetDockerTlsVerify(propertyName);
     }
 
     /// <inheritdoc />
@@ -56,7 +120,14 @@
     }
 
     /// <inheritdoc />
-    public IDockerImage GetRyukContainerImage()
+    public bool GetRyukContainerPrivileged()
+    {
+      const string propertyName = "ryuk.container.privileged";
+      return this.GetRyukContainerPrivileged(propertyName);
+    }
+
+    /// <inheritdoc />
+    public IImage GetRyukContainerImage()
     {
       const string propertyName = "ryuk.container.image";
       return this.GetRyukContainerImage(propertyName);

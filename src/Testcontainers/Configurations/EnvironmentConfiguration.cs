@@ -1,7 +1,8 @@
-﻿namespace DotNet.Testcontainers.Configurations
+namespace DotNet.Testcontainers.Configurations
 {
   using System;
   using System.Linq;
+  using System.Text.Json;
   using DotNet.Testcontainers.Images;
 
   /// <summary>
@@ -13,19 +14,63 @@
 
     private const string DockerHost = "DOCKER_HOST";
 
+    private const string DockerAuthConfig = "DOCKER_AUTH_CONFIG";
+
+    private const string DockerCertPath = "DOCKER_CERT_PATH";
+
+    private const string DockerTls = "DOCKER_TLS";
+
+    private const string DockerTlsVerify = "DOCKER_TLS_VERIFY";
+
+    private const string DockerHostOverride = "TESTCONTAINERS_HOST_OVERRIDE";
+
+    private const string DockerSocketOverride = "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE";
+
     private const string RyukDisabled = "TESTCONTAINERS_RYUK_DISABLED";
+
+    private const string RyukContainerPrivileged = "TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED";
 
     private const string RyukContainerImage = "TESTCONTAINERS_RYUK_CONTAINER_IMAGE";
 
     private const string HubImageNamePrefix = "TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX";
 
+    static EnvironmentConfiguration()
+    {
+    }
+
     /// <summary>
     /// Initializes a new instance of the <see cref="EnvironmentConfiguration" /> class.
     /// </summary>
     public EnvironmentConfiguration()
-      : base(new[] { DockerConfig, DockerHost, RyukDisabled, RyukContainerImage, HubImageNamePrefix }
+      : base(new[]
+        {
+          DockerAuthConfig,
+          DockerCertPath,
+          DockerConfig,
+          DockerHost,
+          DockerTls,
+          DockerTlsVerify,
+          DockerHostOverride,
+          DockerSocketOverride,
+          RyukDisabled,
+          RyukContainerPrivileged,
+          RyukContainerImage,
+          HubImageNamePrefix,
+        }
         .ToDictionary(key => key, Environment.GetEnvironmentVariable))
     {
+    }
+
+    /// <summary>
+    /// Gets the <see cref="ICustomConfiguration" /> instance.
+    /// </summary>
+    public static ICustomConfiguration Instance { get; }
+      = new EnvironmentConfiguration();
+
+    /// <inheritdoc />
+    public string GetDockerConfig()
+    {
+      return this.GetDockerConfig(DockerConfig);
     }
 
     /// <inheritdoc />
@@ -35,13 +80,55 @@
     }
 
     /// <inheritdoc />
+    public string GetDockerHostOverride()
+    {
+      return this.GetDockerHostOverride(DockerHostOverride);
+    }
+
+    /// <inheritdoc />
+    public string GetDockerSocketOverride()
+    {
+      return this.GetDockerSocketOverride(DockerSocketOverride);
+    }
+
+    /// <inheritdoc />
+    public JsonDocument GetDockerAuthConfig()
+    {
+      return this.GetDockerAuthConfig(DockerAuthConfig);
+    }
+
+    /// <inheritdoc />
+    public string GetDockerCertPath()
+    {
+      return this.GetDockerCertPath(DockerCertPath);
+    }
+
+    /// <inheritdoc />
+    public bool GetDockerTls()
+    {
+      return this.GetDockerTls(DockerTls);
+    }
+
+    /// <inheritdoc />
+    public bool GetDockerTlsVerify()
+    {
+      return this.GetDockerTlsVerify(DockerTlsVerify);
+    }
+
+    /// <inheritdoc />
     public bool GetRyukDisabled()
     {
       return this.GetRyukDisabled(RyukDisabled);
     }
 
     /// <inheritdoc />
-    public IDockerImage GetRyukContainerImage()
+    public bool GetRyukContainerPrivileged()
+    {
+      return this.GetRyukContainerPrivileged(RyukContainerPrivileged);
+    }
+
+    /// <inheritdoc />
+    public IImage GetRyukContainerImage()
     {
       return this.GetRyukContainerImage(RyukContainerImage);
     }

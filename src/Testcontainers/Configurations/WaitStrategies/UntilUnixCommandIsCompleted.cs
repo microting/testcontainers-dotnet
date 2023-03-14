@@ -2,7 +2,6 @@ namespace DotNet.Testcontainers.Configurations
 {
   using System.Threading.Tasks;
   using DotNet.Testcontainers.Containers;
-  using Microsoft.Extensions.Logging;
 
   internal class UntilUnixCommandIsCompleted : IWaitUntil
   {
@@ -18,9 +17,9 @@ namespace DotNet.Testcontainers.Configurations
       this.command = command;
     }
 
-    public virtual async Task<bool> Until(ITestcontainersContainer testcontainers, ILogger logger)
+    public virtual async Task<bool> UntilAsync(IContainer container)
     {
-      var execResult = await testcontainers.ExecAsync(this.command)
+      var execResult = await container.ExecAsync(this.command)
         .ConfigureAwait(false);
 
       return 0L.Equals(execResult.ExitCode);

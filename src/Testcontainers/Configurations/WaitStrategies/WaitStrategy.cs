@@ -3,8 +3,9 @@ namespace DotNet.Testcontainers.Configurations
   using System;
   using System.Threading;
   using System.Threading.Tasks;
+  using JetBrains.Annotations;
 
-  internal static class WaitStrategy
+  public static class WaitStrategy
   {
     /// <summary>
     /// Blocks while condition is true or timeout occurs.
@@ -15,28 +16,41 @@ namespace DotNet.Testcontainers.Configurations
     /// <param name="ct">Propagates notification that operations should be canceled.</param>
     /// <exception cref="TimeoutException">Thrown as soon as the timeout expires.</exception>
     /// <returns>A task that represents the asynchronous block operation.</returns>
-    public static async Task WaitWhile(Func<Task<bool>> wait, int frequency = 25, int timeout = -1, CancellationToken ct = default)
+    [PublicAPI]
+    public static async Task WaitWhileAsync(Func<Task<bool>> wait, TimeSpan frequency, TimeSpan timeout, CancellationToken ct = default)
     {
-      var waitTask = Task.Run(
-        async () =>
-        {
-          while (!ct.IsCancellationRequested && await wait()
-            .ConfigureAwait(false))
-          {
-            await Task.Delay(frequency, ct)
-              .ConfigureAwait(false);
-          }
-        },
-        ct);
-
-      if (await Task.WhenAny(waitTask, Task.Delay(timeout, ct)) == waitTask)
+      async Task WhileAsync()
       {
-        await waitTask.ConfigureAwait(false);
+        while (!ct.IsCancellationRequested)
+        {
+          var isSuccessful = await wait.Invoke()
+            .ConfigureAwait(false);
+
+          if (!isSuccessful)
+          {
+            break;
+          }
+
+          await Task.Delay(frequency, ct)
+            .ConfigureAwait(false);
+        }
       }
-      else
+
+      var waitTask = WhileAsync();
+
+      var timeoutTask = Task.Delay(timeout, ct);
+
+      var isTimeoutTask = timeoutTask == await Task.WhenAny(waitTask, timeoutTask)
+        .ConfigureAwait(false);
+
+      if (isTimeoutTask)
       {
         throw new TimeoutException();
       }
+
+      // Rethrows exceptions.
+      await waitTask
+        .ConfigureAwait(false);
     }
 
     /// <summary>
@@ -48,28 +62,41 @@ namespace DotNet.Testcontainers.Configurations
     /// <param name="ct">Propagates notification that operations should be canceled.</param>
     /// <exception cref="TimeoutException">Thrown as soon as the timeout expires.</exception>
     /// <returns>A task that represents the asynchronous block operation.</returns>
-    public static async Task WaitUntil(Func<Task<bool>> wait, int frequency = 25, int timeout = -1, CancellationToken ct = default)
+    [PublicAPI]
+    public static async Task WaitUntilAsync(Func<Task<bool>> wait, TimeSpan frequency, TimeSpan timeout, CancellationToken ct = default)
     {
-      var waitTask = Task.Run(
-        async () =>
-        {
-          while (!ct.IsCancellationRequested && !await wait()
-            .ConfigureAwait(false))
-          {
-            await Task.Delay(frequency, ct)
-              .ConfigureAwait(false);
-          }
-        },
-        ct);
-
-      if (await Task.WhenAny(waitTask, Task.Delay(timeout, ct)) == waitTask)
+      async Task UntilAsync()
       {
-        await waitTask.ConfigureAwait(false);
+        while (!ct.IsCancellationRequested)
+        {
+          var isSuccessful = await wait.Invoke()
+            .ConfigureAwait(false);
+
+          if (isSuccessful)
+          {
+            break;
+          }
+
+          await Task.Delay(frequency, ct)
+            .ConfigureAwait(false);
+        }
       }
-      else
+
+      var waitTask = UntilAsync();
+
+      var timeoutTask = Task.Delay(timeout, ct);
+
+      var isTimeoutTask = timeoutTask == await Task.WhenAny(waitTask, timeoutTask)
+        .ConfigureAwait(false);
+
+      if (isTimeoutTask)
       {
         throw new TimeoutException();
       }
+
+      // Rethrows exceptions.
+      await waitTask
+        .ConfigureAwait(false);
     }
   }
 }

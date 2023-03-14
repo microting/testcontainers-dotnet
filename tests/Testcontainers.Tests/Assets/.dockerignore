@@ -1,3 +1,5 @@
+Dockerfile
 credHelpers
 credsStore
+healthWaitStrategy
 **/*.md
